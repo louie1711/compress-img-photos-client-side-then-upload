@@ -1,0 +1,245 @@
+<!doctype html>
+
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>js file upload example</title>
+</head>
+
+<body>
+
+    <form>
+        <!-- using the file chooser feature of form to grab files, then upload via js -->      
+
+        <label for="upload_multi_photos" style="border: 1px solid black;" >select imgs to upload</label>
+        <div id="new_simple_files_upload">
+            <input id="upload_multi_photos" class="uploadfiles" type="file" multiple style="display: none;" accept="image/jpeg">
+        </div>
+    </form>
+
+
+    <br>some references and inspiration, that started me off 
+    <br>
+
+    https://stackoverflow.com/questions/23945494/use-html5-to-resize-an-image-before-upload/39235724#39235724 <br>
+    https://stackoverflow.com/questions/14672746/how-to-compress-an-image-via-javascript-in-the-browser  <br>
+    https://stackoverflow.com/questions/57127365/make-html5-filereader-working-with-heic-files  <br>
+
+    <!-- js below here... -->
+
+    <script src="https://code.jquery.com/jquery-3.4.1.min.js" integrity="sha256-CSXorXvZcTkaix6Yvo6HppcZGetbYMGWSFlBw8HfCJo=" crossorigin="anonymous"></script>
+
+    <script>
+        $(document).ready(function() {
+
+            // Upload Multiple new photos 
+            $("#new_simple_files_upload").on('change', '.uploadfiles', function(event) {
+
+                console.log(" uploading files js-blog-canvas-resize ");
+                event.preventDefault();
+                var phototoUpload = uploadTheImages(this.files);
+            });
+        });
+
+        var filesToBeResizedAndUploaded = new Array();
+        var numberOfFilesToUpload = 0; // this is set when uploading multiple files 
+
+        class WhoImage {
+            // fields (this way keeps most / all browsers happy )
+            constructor() {
+                this.accountFields = ['resizedImageBlob', 'standardJsFileObjectBeforeConversion']; // LOUIS_REFACTOR do I need to add ?
+            }
+        }
+
+        /*
+         *  create a canvas that will be correct for the resized image, i.e. keeping the aspect ratio (so img doesn't look distorted )
+         */
+        function setCorrectSizeOfCanvasForResizedImage(max_size, image, passedCanvas = false) {
+
+            console.log("max height or width = " + max_size);
+
+            // Resize the image eg max height or width = max_size         
+            if (passedCanvas === false)
+                var canvas = document.createElement('canvas');
+            else
+                var canvas = passedCanvas;
+
+            //max_size = 1200, // TODO : pull max size from a site config
+            width = image.width,
+                height = image.height;
+            if (width > height) {
+                if (width > max_size) {
+                    height *= max_size / width;
+                    width = max_size;
+                }
+            } else {
+                if (height > max_size) {
+                    width *= max_size / height;
+                    height = max_size;
+                }
+            }
+            canvas.width = width;
+            canvas.height = height;
+
+            return canvas;
+
+        }
+
+
+
+        /* Utility function to convert a canvas to a BLOB */
+        var dataURLToBlob = function(dataURL) {
+            var BASE64_MARKER = ';base64,';
+            if (dataURL.indexOf(BASE64_MARKER) == -1) {
+                var parts = dataURL.split(',');
+                var contentType = parts[0].split(':')[1];
+                var raw = parts[1];
+
+                return new Blob([raw], {
+                    type: contentType
+                });
+            }
+
+            var parts = dataURL.split(BASE64_MARKER);
+            var contentType = parts[0].split(':')[1];
+            var raw = window.atob(parts[1]);
+            var rawLength = raw.length;
+
+            var uInt8Array = new Uint8Array(rawLength);
+
+            for (var i = 0; i < rawLength; ++i) {
+                uInt8Array[i] = raw.charCodeAt(i);
+            }
+
+            return new Blob([uInt8Array], {
+                type: contentType
+            });
+        }
+        /* End Utility function to convert a canvas to a BLOB      */
+
+        /******************************************* wrapFilestoUpload()  ********************************************************/
+        function wrapFilestoUpload() {
+
+            var formData = new FormData();
+            var photoNames = Array();
+
+            for (var i = 0; i < filesToBeResizedAndUploaded.length; i++) {
+                console.log("adding files to be uploaded to html image[] and images_fixed_wh [] arrays | total = " + filesToBeResizedAndUploaded.length);
+                var blobName = filesToBeResizedAndUploaded[i].standardJsFileObjectBeforeConversion.name;
+                formData.append('images[]', filesToBeResizedAndUploaded[i].resizedImageBlob, blobName);
+                photoNames.push(blobName);
+            }
+
+            console.log("number of files to upload = " + filesToBeResizedAndUploaded.length);
+
+            formData.append('image_names', photoNames);
+
+            return formData;
+
+        }
+        /******************************************* END wrapFilestoUpload()  ********************************************************/
+
+        function validateAllFilesAreImages(files) {
+
+            for (var i = 0; i < files.length; i++) {
+                //console.log("file name = " + files[i].name + "<br>");
+                if (files[i].type.match(/image.*/)) {
+                    //console.log("its image");
+                } else {
+                    console.log("at least one file not image ");
+                    return false;
+                }
+            }
+            return true;
+        }
+
+
+        function createCanvasHelper(image, standardJsFileObject) {
+
+            var max_pixels_length_or_width = 1200; // pixels 
+            var canvas = setCorrectSizeOfCanvasForResizedImage(max_pixels_length_or_width, image);
+            canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+
+            var dataUrl = canvas.toDataURL('image/jpeg'); //  (base64 string of image )
+            var resizedImage = dataURLToBlob(dataUrl); //  convert b64 string to binary file         
+
+            var whoImage = new WhoImage();
+            whoImage.resizedImageBlob = resizedImage;
+            whoImage.standardJsFileObjectBeforeConversion = standardJsFileObject;
+            console.log("resize img = " + whoImage.resizedImageBlob.size);
+            filesToBeResizedAndUploaded.push(whoImage);
+
+            return canvas;
+        }
+
+
+        /* 
+        1. resize img into canvas element (so smaller filesize)
+        2. do for all selected imgs (filechooser)
+        3. upload small filesize images
+        */
+        function uploadTheImages(files) { // onchange of file explorer 
+
+            filesToBeResizedAndUploaded = new Array(); // clear old images out
+            validateAllFilesAreImages(files);
+            numberOfFilesToUpload = files.length;
+
+            for (var i = 0; i < files.length; i++) {
+
+                // Load the image images into canvases and then convert to blobs
+                let reader = new FileReader();
+                reader.standardJsFileObject = files[i];
+                console.log("reader file name = " + reader.standardJsFileObject.name);
+
+                reader.onload = function(readerEvent) { // lm - fires when user selects a file using the mac file browser 
+                    let image = new Image();
+
+                    image.onload = function(imageEvent) {
+                        createCanvasHelper(image, reader.standardJsFileObject);
+
+                        if (filesToBeResizedAndUploaded.length == numberOfFilesToUpload) { // if this is the last image select all images to server                      
+                            sendImagesToServer();
+                        }
+                    }
+
+                    image.src = readerEvent.target.result; // triggers 'image.onload' (result = BASE 64 string )
+                }
+
+                reader.readAsDataURL(files[i]); // trigger reader.onload (above)
+            }
+
+            return files;
+        }
+
+        /******************************************* sendImagesToServer()  ********************************************************/
+        function sendImagesToServer() {
+
+            console.log(" sending to server yay ");
+            var formData = wrapFilestoUpload();
+
+            $.ajax({
+                type: 'POST',
+                url: "/simple-images-upload",
+                enctype: 'multipart/form-data',
+                data: formData,
+                contentType: false,
+                processData: false,
+                cache: false,
+                success: function(resultData) {
+                    if (resultData.status == 422) {
+                        alert('error uploading images');
+                    } else {
+                        alert('images are uploaded yay :) ')
+                    }
+                }
+            });
+
+        }
+        /******************************************* END - sendImagesToServer()  ********************************************************/
+    </script>
+
+</body>
+
+</html>
